@@ -19,12 +19,21 @@ const protect = (req, res, next) => {
   }
 };
 
+const rateLimit = require("express-rate-limit");
+
 app.use(
   session({
     secret,
     resave: false,
     saveUninitialized: true,
     store,
+  })
+);
+
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // 5 calls
   })
 );
 

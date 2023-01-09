@@ -25,6 +25,11 @@ const winston = require("winston");
 const expressWinston = require("express-winston");
 const responseTime = require("response-time");
 
+const cors = require("cors");
+const helmet = require("helmet");
+
+const { createProxyMiddleware } = require("http-proxy-middleware");
+
 app.use(
   session({
     secret,
@@ -57,6 +62,9 @@ app.use(
   })
 );
 
+app.use(cors());
+app.use(helmet());
+
 app.get("/", (req, res) => {
   const { name = 'user' } = req.query;
   res.send(`Hello ${name}!`);
@@ -83,6 +91,17 @@ app.get("/protected", protect, (req, res) => {
   const { name = "user" } = req.query;
   res.send(`Hello ${name}!`);
 });
+
+app.use(
+  "/search",
+  createProxyMiddleware({
+    target: "http://api.duckduckgo.com/",
+    changeOrigin: true,
+    pathRewrite: {
+      [`^/search`]: "",
+    },
+  })
+);
 
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);

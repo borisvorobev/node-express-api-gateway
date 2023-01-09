@@ -21,12 +21,32 @@ const protect = (req, res, next) => {
 
 const rateLimit = require("express-rate-limit");
 
+const winston = require("winston");
+const expressWinston = require("express-winston");
+const responseTime = require("response-time");
+
 app.use(
   session({
     secret,
     resave: false,
     saveUninitialized: true,
     store,
+  })
+);
+
+app.use(responseTime());
+
+app.use(
+  expressWinston.logger({
+    transports: [new winston.transports.Console()],
+    format: winston.format.json(),
+    statusLevels: true,
+    meta: false,
+    msg: "HTTP {{req.method}} {{req.url}} {{res.statusCode}} {{res.responseTime}}ms",
+    expressFormat: true,
+    ignoreRoute() {
+      return false;
+    },
   })
 );
 

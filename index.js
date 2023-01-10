@@ -1,14 +1,26 @@
+// import all the required packages
+const cors = require("cors");
 const express = require("express");
-
-const app = express();
-const port = 3000;
-
-require("dotenv").config();
-
 const session = require("express-session");
+const rateLimit = require("express-rate-limit");
+const expressWinston = require("express-winston");
+const helmet = require("helmet");
+const { createProxyMiddleware } = require("http-proxy-middleware");
+const responseTime = require("response-time");
+const winston = require("winston");
+const config = require("./config");
 
-const secret = process.env.SESSION_SECRET;
+// configure the application
+const app = express();
+const port = config.serverPort;
+const secret = config.sessionSecret;
 const store = new session.MemoryStore();
+
+const { createProxyMiddleware } = require("http-proxy-middleware");
+
+const alwaysAllow = (_1, _2, next) => {
+  next();
+};
 const protect = (req, res, next) => {
   const { authenticated } = req.session;
 
@@ -19,16 +31,30 @@ const protect = (req, res, next) => {
   }
 };
 
-const rateLimit = require("express-rate-limit");
+app.disable("x-powered-by");
 
-const winston = require("winston");
-const expressWinston = require("express-winston");
-const responseTime = require("response-time");
+app.use(helmet());
 
-const cors = require("cors");
-const helmet = require("helmet");
+app.use(responseTime());
 
-const { createProxyMiddleware } = require("http-proxy-middleware");
+app.use(
+  expressWinston.logger({
+    transports: [new winston.transports.Console()],
+    format: winston.format.json(),
+    statusLevels: true,
+    meta: false,
+    level: "debug",
+    msg: "HTTP {{req.method}} {{req.url}} {{res.statusCode}} {{res.responseTime}}ms",
+    expressFormat: true,
+    ignoreRoute() {
+      return false;
+    },
+  })
+);
+
+app.use(cors());
+
+app.use(rateLimit(config.rate));
 
 app.use(
   session({
@@ -39,37 +65,6 @@ app.use(
   })
 );
 
-app.use(responseTime());
-
-app.use(
-  expressWinston.logger({
-    transports: [new winston.transports.Console()],
-    format: winston.format.json(),
-    statusLevels: true,
-    meta: false,
-    msg: "HTTP {{req.method}} {{req.url}} {{res.statusCode}} {{res.responseTime}}ms",
-    expressFormat: true,
-    ignoreRoute() {
-      return false;
-    },
-  })
-);
-
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // 5 calls
-  })
-);
-
-app.use(cors());
-app.use(helmet());
-
-app.get("/", (req, res) => {
-  const { name = 'user' } = req.query;
-  res.send(`Hello ${name}!`);
-});
-
 app.get("/login", (req, res) => {
   const { authenticated } = req.session;
 
@@ -79,6 +74,12 @@ app.get("/login", (req, res) => {
   } else {
     res.send("Already authenticated");
   }
+});
+
+Object.keys(config.proxies).forEach((path) => {
+  const { protected, ...options } = config.proxies[path];
+  const check = protected ? protect : alwaysAllow;
+  app.use(path, check, createProxyMiddleware(options));
 });
 
 app.get("/logout", protect, (req, res) => {
